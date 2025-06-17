@@ -1,0 +1,16 @@
+[package]
+name = "term22"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Egui -- Window
+egui = "0.27.2" # Or the latest version of egui
+eframe = { version = "0.27.2", features = ["persistence"] }
+env_logger = { version = "0.10", default-features = false, features = [
+  "auto-color",
+    "humantime",
+]}
+
+# Nix -- termios
+nix = { version = "0.29.0", features = ["term", "process"] }

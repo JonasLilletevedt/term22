@@ -1,0 +1,58 @@
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
+use std::ffi::CString;
+use nix::pty::{forkpty, ForkptyResult, PtyMaster};
+use nix::unistd::{self, Pid};
+use nix::Error as NixError;
+
+
+fn get_default_shell_path() -> String {
+    std::env::var("SHELL")
+        .expect("could not find default shell from $SHELL")
+}
+
+fn init_pty(shell_path_str: &str) -> Result<(OwnedFd, Pid), NixError> {
+    unsafe {
+        match forkpty(None, None) {
+            Ok(fork_result) => {
+                match fork_result {
+                    ForkptyResult::Parent { master, child } => {
+                        let raw_fd = master.into_raw_fd();
+                        Ok((OwnedFd::from_raw_fd(raw_fd), child))
+                    }
+                    ForkptyResult::Child => {
+                        let shell_cstr = CString::new(shell_path_str)
+                            .expect("Child: Failed to create CString for shell path");
+                        let arg = [shell_cstr.as_c_str()];
+                        match nix::unistd::execvp(&shell_cstr, &arg) {
+                            Ok(_) => unreachable!(),
+                            Err(e) => {
+                                eprintln!("[Child] FATAL: execvp failed for '{}': {}", shell_path_str, e);
+                                std::process::exit(127);
+                            }
+                        }
+                    }
+                }
+            },      
+            Err(e) => {
+                eprintln!("Err: forkpty failed in init_pty: {}", e);
+                Err(e)
+            }
+        }
+    }
+}
+fn main() {
+    let shell_path = get_default_shell_path();
+
+    println!("[Main] Attempting to initalize PTY with  shell:  {}", shell_path);
+
+    let (master_fd, child_pid) = match init_pty(&shell_path) {
+        Ok(tuple) => {
+            println!("[Main] PTY initalized succesfully. Master Fd {},Child Pid: {}", 
+                tuple.0.as_raw_fd(), tuple.1);
+        }
+        Err(e) => {
+            eprintln!("[Main] Failed to initalize PTY: {}", e);
+            panic!("Application cannot start without a PTY.");
+        }
+    }
+}
